@@ -2,13 +2,20 @@ package master2019.flink.YellowTaxiTrip;
 
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
-import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.core.fs.FileSystem;
+import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
+import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrdernessTimestampExtractor;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
+import org.apache.flink.streaming.api.windowing.time.Time;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -23,6 +30,7 @@ public class LargeTrips {
         final ParameterTool params = ParameterTool.fromArgs(args);
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
         final DataStream<String> inputText = env.readTextFile(params.get("input"));
 
@@ -47,6 +55,17 @@ public class LargeTrips {
                         return(mapTuple.f3 > minTime);
                     }
                 });
+
+        KeyedStream<Tuple4<Long, Date, Date, Long>, Tuple> keyedStream = filterStream.
+                assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple4<Long, Date, Date, Long>>() {
+                    @Override
+                    public long extractAscendingTimestamp(Tuple4<Long, Date, Date, Long> tuple) {
+                        return tuple.f1.getTime();
+                    }
+                })
+                .keyBy(0);
+
+        keyedStream.window(TumblingEventTimeWindows.of(Time.hours(3))).sum(3);
 
         if (params.has("output")) {
             filterStream.writeAsCsv(params.get("output"), FileSystem.WriteMode.OVERWRITE);
