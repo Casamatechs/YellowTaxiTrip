@@ -3,14 +3,12 @@ package master2019.flink.YellowTaxiTrip;
 import org.apache.flink.api.common.functions.FilterFunction;
 import org.apache.flink.api.common.functions.MapFunction;
 import org.apache.flink.api.java.tuple.Tuple;
-import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.datastream.KeyedStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -35,7 +33,7 @@ public class JFKAlarms {
         final ParameterTool params = ParameterTool.fromArgs(args);
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
+        // env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
         final DataStream<String> inputText = env.readTextFile(params.get("input"));
 
@@ -68,18 +66,18 @@ public class JFKAlarms {
                 })
                 .keyBy(0);
 
-        SingleOutputStreamOperator out = keyedStream.window(TumblingEventTimeWindows.of(Time.hours(1))).apply(new SimpleSum());
+        SingleOutputStreamOperator out = keyedStream.window(TumblingEventTimeWindows.of(Time.hours(1))).apply(new PassengerCounter());
 
         if (params.has("output")) {
-            out.writeAsCsv(params.get("output"), FileSystem.WriteMode.OVERWRITE);
+            out.writeAsCsv(params.get("output"), FileSystem.WriteMode.OVERWRITE).setParallelism(1);
         }
 
-        env.execute("LargeTrips");
+        env.execute("JFKAlarms");
 
 
     }
 
-    public static class SimpleSum implements WindowFunction<Tuple5<Long, Date, Date, Long, Long>, Tuple4<Long, String, String, Long>, Tuple, TimeWindow> {
+    public static class PassengerCounter implements WindowFunction<Tuple5<Long, Date, Date, Long, Long>, Tuple4<Long, String, String, Long>, Tuple, TimeWindow> {
 
         final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
@@ -94,12 +92,12 @@ public class JFKAlarms {
                 id = first.f0;
                 start = dateFormat.format(first.f1);
                 end = dateFormat.format(first.f2);
-                counter += first.f4;
+                counter += first.f3;
             }
             while(iterator.hasNext()){
                 Tuple5<Long, Date, Date, Long, Long> next = iterator.next();
                 end = dateFormat.format(next.f2);
-                counter += next.f4;
+                counter += next.f3;
             }
             out.collect(new Tuple4<Long, String, String, Long>(id, start, end, counter));
         }
