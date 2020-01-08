@@ -7,10 +7,6 @@ import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.core.fs.FileSystem;
-import org.apache.flink.streaming.api.TimeCharacteristic;
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.KeyedStream;
-import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.timestamps.AscendingTimestampExtractor;
 import org.apache.flink.streaming.api.functions.windowing.WindowFunction;
@@ -30,18 +26,43 @@ import java.util.Iterator;
 public class JFKAlarms {
     public static void main(String[] args) throws Exception {
 
+        final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
         final ParameterTool params = ParameterTool.fromArgs(args);
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         // env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
-        final DataStream<String> inputText = env.readTextFile(params.get("input"));
-
         env.getConfig().setGlobalJobParameters(params);
 
-        final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        env.readTextFile(params.get("input"))
+                .map(new MapFunction<String, Tuple5<Long, Date, Date, Long, Long>>() {
+                    public Tuple5<Long, Date, Date, Long, Long> map(String in) throws ParseException {
+                        String[] fieldArray = in.split(",");
+                        Tuple5<Long, Date, Date, Long, Long> out = new Tuple5(Long.parseLong(fieldArray[0]),
+                                dateFormat.parse(fieldArray[1]), dateFormat.parse(fieldArray[2]),
+                                Long.parseLong(fieldArray[3]), Long.parseLong(fieldArray[5]));
+                        return out;
+                    }
+                })
+                .filter(new FilterFunction<Tuple5<Long, Date, Date, Long, Long>>() {
+                    public boolean filter(Tuple5<Long, Date, Date, Long, Long> mapTuple) throws Exception {
+                        return (mapTuple.f4 == 2 && mapTuple.f3 > 1);
+                    }
+                })
+                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple5<Long, Date, Date, Long, Long>>() {
+                    @Override
+                    public long extractAscendingTimestamp(Tuple5<Long, Date, Date, Long, Long> tuple) {
+                        return tuple.f1.getTime();
+                    }
+                })
+                .keyBy(0)
+                .window(TumblingEventTimeWindows.of(Time.hours(1)))
+                .apply(new PassengerCounter())
+                .writeAsCsv(params.get("output"), FileSystem.WriteMode.OVERWRITE)
+                .setParallelism(1);
 
-        SingleOutputStreamOperator<Tuple5<Long, Date, Date, Long, Long>> filterStream = inputText
+        /*SingleOutputStreamOperator<Tuple5<Long, Date, Date, Long, Long>> filterStream = inputText
                 .map(new MapFunction<String, Tuple5<Long, Date, Date, Long, Long>>() {
                     public Tuple5<Long, Date, Date, Long, Long> map(String in) throws ParseException {
                         String[] fieldArray = in.split(",");
@@ -70,14 +91,14 @@ public class JFKAlarms {
 
         if (params.has("output")) {
             out.writeAsCsv(params.get("output"), FileSystem.WriteMode.OVERWRITE).setParallelism(1);
-        }
+        }*/
 
         env.execute("JFKAlarms");
 
 
     }
 
-    public static class PassengerCounter implements WindowFunction<Tuple5<Long, Date, Date, Long, Long>, Tuple4<Long, String, String, Long>, Tuple, TimeWindow> {
+    private static class PassengerCounter implements WindowFunction<Tuple5<Long, Date, Date, Long, Long>, Tuple4<Long, String, String, Long>, Tuple, TimeWindow> {
 
         final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
@@ -88,13 +109,13 @@ public class JFKAlarms {
             String start = "";
             String end = "";
             Long counter = 0L;
-            if(first!=null){
+            if (first != null) {
                 id = first.f0;
                 start = dateFormat.format(first.f1);
                 end = dateFormat.format(first.f2);
                 counter += first.f3;
             }
-            while(iterator.hasNext()){
+            while (iterator.hasNext()) {
                 Tuple5<Long, Date, Date, Long, Long> next = iterator.next();
                 end = dateFormat.format(next.f2);
                 counter += next.f3;
