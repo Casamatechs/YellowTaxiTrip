@@ -34,16 +34,17 @@ public class JFKAlarms {
                 .map(in -> {
                     String[] fieldArray = in.split(",");
                     return new Tuple5<>(Long.parseLong(fieldArray[0]),
-                            LocalDateTime.parse(fieldArray[1], LargeTrips.dateTimeFormatter),
-                            LocalDateTime.parse(fieldArray[2], LargeTrips.dateTimeFormatter),
+                            fieldArray[1],
+                            fieldArray[2],
                             Long.parseLong(fieldArray[3]), Long.parseLong(fieldArray[5]));
                 })
-                .returns(Types.TUPLE(Types.LONG, Types.LOCAL_DATE_TIME, Types.LOCAL_DATE_TIME, Types.LONG, Types.LONG))
+                .returns(Types.TUPLE(Types.LONG, Types.STRING, Types.STRING, Types.LONG, Types.LONG))
                 .filter(mapTuple -> mapTuple.f4 == 2 && mapTuple.f3 > 1)
-                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple5<Long, LocalDateTime, LocalDateTime, Long, Long>>() {
+                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple5<Long, String, String, Long, Long>>() {
                     @Override
-                    public long extractAscendingTimestamp(Tuple5<Long, LocalDateTime, LocalDateTime, Long, Long> tuple) {
-                        return tuple.f1.toInstant(ZoneId.of("CET").getRules().getOffset(tuple.f1)).toEpochMilli();
+                    public long extractAscendingTimestamp(Tuple5<Long, String, String, Long, Long> tuple) {
+
+                        return LocalDateTime.parse(tuple.f1, LargeTrips.dateTimeFormatter).toInstant(ZoneId.of("CET").getRules().getOffset(LocalDateTime.now())).toEpochMilli();
                     }
                 })
                 .keyBy(0)
@@ -57,21 +58,21 @@ public class JFKAlarms {
 
     }
 
-    private static class PassengerCounter implements WindowFunction<Tuple5<Long, LocalDateTime, LocalDateTime, Long, Long>, Tuple4<Long, String, String, Long>, Tuple, TimeWindow> {
+    private static class PassengerCounter implements WindowFunction<Tuple5<Long, String, String, Long, Long>, Tuple4<Long, String, String, Long>, Tuple, TimeWindow> {
 
-        public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple5<Long, LocalDateTime, LocalDateTime, Long, Long>> input, Collector<Tuple4<Long, String, String, Long>> out) throws Exception {
-            Iterator<Tuple5<Long, LocalDateTime, LocalDateTime, Long, Long>> iterator = input.iterator();
-            Tuple5<Long, LocalDateTime, LocalDateTime, Long, Long> first = iterator.next();
+        public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple5<Long, String, String, Long, Long>> input, Collector<Tuple4<Long, String, String, Long>> out) throws Exception {
+            Iterator<Tuple5<Long, String, String, Long, Long>> iterator = input.iterator();
+            Tuple5<Long, String, String, Long, Long> first = iterator.next();
             final Tuple4<Long, String, String, Long> retTuple = new Tuple4<>(-1L, "", "", 0L);
             if (first != null) {
                 retTuple.setField(first.f0, 0);
-                retTuple.setField(LargeTrips.dateTimeFormatter.format(first.f1), 1);
-                retTuple.setField(LargeTrips.dateTimeFormatter.format(first.f2), 2);
+                retTuple.setField(first.f1, 1);
+                retTuple.setField(first.f2, 2);
                 retTuple.setField(retTuple.f3 + first.f3, 3);
             }
             while (iterator.hasNext()) {
-                Tuple5<Long, LocalDateTime, LocalDateTime, Long, Long> next = iterator.next();
-                retTuple.setField(LargeTrips.dateTimeFormatter.format(next.f2), 2);
+                Tuple5<Long, String, String, Long, Long> next = iterator.next();
+                retTuple.setField(next.f2, 2);
                 retTuple.setField(retTuple.f3 + next.f3, 3);
             }
             out.collect(retTuple);
