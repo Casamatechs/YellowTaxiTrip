@@ -21,7 +21,7 @@ import org.apache.flink.util.Collector;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Iterator;
+import java.util.stream.StreamSupport;
 
 /**
  * In this class the Large trips program has to be implemented
@@ -89,28 +89,14 @@ public class LargeTrips {
         final SimpleDateFormat dayFormat = new SimpleDateFormat("yyyy-MM-dd");
         final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
-        public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple4<Long, Date, Date, Long>> input, Collector<Tuple5<Long, String, Long, String, String>> out) throws Exception {
-            Iterator<Tuple4<Long, Date, Date, Long>> iterator = input.iterator();
-            Tuple4<Long, Date, Date, Long> first = iterator.next();
-            Long id = -1L;
-            String day = "";
-            String start = "";
-            String end = "";
-            Long counter = 0L;
-            if (first != null) {
-                id = first.f0;
-                day = dayFormat.format(first.f1);
-                start = dateFormat.format(first.f1);
-                end = dateFormat.format(first.f2);
-                counter += 1;
-            }
-            while (iterator.hasNext()) {
-                Tuple4<Long, Date, Date, Long> next = iterator.next();
-                end = dateFormat.format(next.f2);
-                counter += 1;
-            }
-            if (counter > 4) {
-                out.collect(new Tuple5<Long, String, Long, String, String>(id, day, counter, start, end));
+        public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple4<Long, Date, Date, Long>> input, Collector<Tuple5<Long, String, Long, String, String>> out) {
+            final long numberRecords = StreamSupport.stream(input.spliterator(), false).count();
+            if (numberRecords > 4) {
+                Tuple4<Long, Date, Date, Long> first = StreamSupport.stream(input.spliterator(), false).findFirst().get();
+                out.collect(new Tuple5<>(first.f0, dayFormat.format(first.f1),
+                        numberRecords, dateFormat.format(first.f1),
+                        dateFormat.format(StreamSupport.stream(input.spliterator(), false)
+                                .skip(numberRecords-1).findFirst().get().f2)));
             }
         }
     }
