@@ -1,5 +1,7 @@
 package master2019.flink.YellowTaxiTrip;
 
+import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.java.tuple.Tuple;
 import org.apache.flink.api.java.tuple.Tuple4;
@@ -35,51 +37,35 @@ public class JFKAlarms {
         env.getConfig().setGlobalJobParameters(params);
 
         env.readTextFile(params.get("input"))
+                .filter((FilterFunction<String>) s -> {
+                    String[] sp = s.split(",");
+                    return sp[5].equals("2") && Long.parseLong(sp[3]) > 1;
+                })
                 .map(in -> {
                     String[] fieldArray = in.split(",");
-                    return new Tuple5<>(Long.parseLong(fieldArray[0]),
+                    return new Tuple4<>(Long.parseLong(fieldArray[0]),
                             fieldArray[1],
                             fieldArray[2],
-                            Long.parseLong(fieldArray[3]), Long.parseLong(fieldArray[5]));
+                            Long.parseLong(fieldArray[3]));
                 })
-                .returns(Types.TUPLE(Types.LONG, Types.STRING, Types.STRING, Types.LONG, Types.LONG))
-                .filter(mapTuple -> mapTuple.f4 == 2 && mapTuple.f3 > 1)
-                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple5<Long, String, String, Long, Long>>() {
+                .returns(Types.TUPLE(Types.LONG, Types.STRING, Types.STRING, Types.LONG))
+                .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple4<Long, String, String, Long>>() {
                     @Override
-                    public long extractAscendingTimestamp(Tuple5<Long, String, String, Long, Long> tuple) {
+                    public long extractAscendingTimestamp(Tuple4<Long, String, String, Long> tuple) {
                         return LocalDateTime.parse(tuple.f1, dateTimeFormatter).atZone(ZoneId.of("CET"))
                                 .toInstant().toEpochMilli();
                     }
                 })
                 .keyBy(0)
                 .window(TumblingEventTimeWindows.of(Time.hours(1)))
-                .apply(new PassengerCounter())
+                .reduce((t1, t2) -> {
+                    t1.setField(t2.f2, 2);
+                    t1.setField(t1.f3 + t2.f3, 3);
+                    return t1;
+                })
                 .writeAsCsv(params.get("output").concat("/jfkAlarms.csv"), FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);
 
         env.execute("JFKAlarms");
-
-
-    }
-
-    private static class PassengerCounter implements WindowFunction<Tuple5<Long, String, String, Long, Long>, Tuple4<Long, String, String, Long>, Tuple, TimeWindow> {
-
-        public void apply(Tuple tuple, TimeWindow timeWindow, Iterable<Tuple5<Long, String, String, Long, Long>> input, Collector<Tuple4<Long, String, String, Long>> out) throws Exception {
-            Iterator<Tuple5<Long, String, String, Long, Long>> iterator = input.iterator();
-            Tuple5<Long, String, String, Long, Long> first = iterator.next();
-            final Tuple4<Long, String, String, Long> retTuple = new Tuple4<>(-1L, "", "", 0L);
-            if (first != null) {
-                retTuple.setField(first.f0, 0);
-                retTuple.setField(first.f1, 1);
-                retTuple.setField(first.f2, 2);
-                retTuple.setField(retTuple.f3 + first.f3, 3);
-            }
-            while (iterator.hasNext()) {
-                Tuple5<Long, String, String, Long, Long> next = iterator.next();
-                retTuple.setField(next.f2, 2);
-                retTuple.setField(retTuple.f3 + next.f3, 3);
-            }
-            out.collect(retTuple);
-        }
     }
 }
