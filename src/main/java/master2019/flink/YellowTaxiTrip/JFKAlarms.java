@@ -16,12 +16,16 @@ import org.apache.flink.util.Collector;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Iterator;
 
 /**
  * In this class the JFK airport trips program has to be implemented.
  */
 public class JFKAlarms {
+
+    private final static DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     public static void main(String[] args) throws Exception {
 
         final ParameterTool params = ParameterTool.fromArgs(args);
@@ -43,8 +47,8 @@ public class JFKAlarms {
                 .assignTimestampsAndWatermarks(new AscendingTimestampExtractor<Tuple5<Long, String, String, Long, Long>>() {
                     @Override
                     public long extractAscendingTimestamp(Tuple5<Long, String, String, Long, Long> tuple) {
-
-                        return LocalDateTime.parse(tuple.f1, LargeTrips.dateTimeFormatter).toInstant(ZoneId.of("CET").getRules().getOffset(LocalDateTime.now())).toEpochMilli();
+                        return LocalDateTime.parse(tuple.f1, dateTimeFormatter).atZone(ZoneId.of("CET"))
+                                .toInstant().toEpochMilli();
                     }
                 })
                 .keyBy(0)
