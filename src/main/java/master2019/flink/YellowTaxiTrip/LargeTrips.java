@@ -89,7 +89,7 @@ public class LargeTrips {
                  * We apply a custom WindowFunction which implements the logic to produce the correct output.
                  */
                 .apply(new LargeTripsCounter())
-                .writeAsCsv(params.get("output").concat("/largeTrips.csv"), FileSystem.WriteMode.OVERWRITE)
+                .writeAsCsv(params.get("output"), FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);
 
         env.execute("LargeTrips");

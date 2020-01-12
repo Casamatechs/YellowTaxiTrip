@@ -92,7 +92,7 @@ public class JFKAlarms {
                     t1.setField(t1.f3 + t2.f3, 3); // We sum the passengers to get at the end the total sum.
                     return t1;
                 })
-                .writeAsCsv(params.get("output").concat("/jfkAlarms.csv"), FileSystem.WriteMode.OVERWRITE)
+                .writeAsCsv(params.get("output"), FileSystem.WriteMode.OVERWRITE)
                 .setParallelism(1);
 
         env.execute("JFKAlarms");
